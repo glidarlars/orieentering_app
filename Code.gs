@@ -78,6 +78,28 @@ function saveResult(result) {
 }
 
 /**
+ * Save a new course to the "Courses" sheet.
+ */
+function saveCourse(course) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Courses');
+  
+  if (!sheet) {
+    sheet = ss.insertSheet('Courses');
+    sheet.appendRow(['ID', 'Name', 'Data (JSON)']);
+  }
+  
+  const id = 'c_' + Date.now();
+  sheet.appendRow([
+    id,
+    course.name,
+    JSON.stringify(course.track)
+  ]);
+  
+  return { success: true, id: id };
+}
+
+/**
  * Utility to include JS/CSS files in the HTML template
  */
 function include(filename) {

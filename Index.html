@@ -199,6 +199,38 @@
             border: 1px solid var(--glass);
         }
 
+        /* Builder View Styles */
+        .builder-controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            padding: 15px;
+            border-radius: 16px;
+            border: 1px solid var(--glass);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: auto;
+        }
+
+        .builder-tip {
+            position: absolute;
+            top: 150px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.6);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+
         .split-list {
             display: flex;
             flex-direction: column;
@@ -273,11 +305,27 @@
                 <p style="text-align:center; opacity:0.5;">Laddar banor...</p>
             </div>
 
-            <div style="margin-top:auto; padding-bottom: 20px;">
+            <div style="margin-top:auto; padding-bottom: 20px; display:flex; flex-direction:column; gap:10px;">
                 <button class="btn btn-primary" onclick="startRace()" id="start-btn" disabled>
                     STARTA LOPP
                 </button>
+                <button class="btn btn-outline" onclick="showView('create')">
+                    SKAPA NY BANA
+                </button>
             </div>
+        </div>
+
+        <!-- View: Create -->
+        <div id="view-create" class="view" style="padding:0;">
+            <div class="builder-controls">
+                <input type="text" id="new-course-name" placeholder="Banans namn..." style="padding:10px;">
+                <div style="display:flex; gap:10px;">
+                    <button class="btn btn-primary" style="flex:1; padding:10px;" onclick="saveNewCourse()">SPARA BANA</button>
+                    <button class="btn btn-outline" style="flex:1; padding:10px;" onclick="showView('setup')">AVBRYT</button>
+                </div>
+            </div>
+            <div class="builder-tip">Klicka på kartan för att lägga till kontroller</div>
+            <div id="map-create" style="height:100%; width:100%;"></div>
         </div>
 
         <!-- View: Race -->
@@ -351,6 +399,7 @@
         };
 
         let map, userMarker, pathLine, controlMarkers = [];
+        let createMap, newCourseMarkers = [], newCourseTrack = [];
 
         // --- Initialization ---
         window.onload = () => {
@@ -375,6 +424,7 @@
             const bId = urlParams.get('banaId');
             
             if (mode === 'results') showView('results');
+            if (mode === 'create') showView('create');
             // If bId is provided, we could auto-select it once loaded
         }
 
@@ -403,9 +453,63 @@
             if (viewId === 'race') {
                 setTimeout(initMap, 100);
             }
+            if (viewId === 'create') {
+                setTimeout(initCreateMap, 100);
+            }
         }
 
         // --- Map & GPS Logic ---
+        function initCreateMap() {
+            if (createMap) return;
+            
+            createMap = L.map('map-create', {
+                zoomControl: false,
+                attributionControl: false
+            }).setView([59.3293, 18.0686], 15);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 20
+            }).addTo(createMap);
+
+            createMap.on('click', (e) => {
+                addControlToNewCourse(e.latlng.lat, e.latlng.lng);
+            });
+        }
+
+        function addControlToNewCourse(lat, lng) {
+            const name = newCourseTrack.length === 0 ? 'Start' : 
+                         (confirm('Är detta målgången?') ? 'Mål' : `Kontroll ${newCourseTrack.length}`);
+            
+            const control = { name, lat, lng, radius: 20 };
+            newCourseTrack.push(control);
+
+            const icon = L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div class="control-marker"></div><div style="position:absolute; top:25px; left:-10px; font-size:0.7rem; width:50px;">${name}</div>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+
+            L.marker([lat, lng], {icon}).addTo(createMap);
+            
+            if (newCourseTrack.length > 1) {
+                const prev = newCourseTrack[newCourseTrack.length - 2];
+                L.polyline([[prev.lat, prev.lng], [lat, lng]], {color: 'rgba(255,255,255,0.5)', dashArray: '5, 10'}).addTo(createMap);
+            }
+        }
+
+        function saveNewCourse() {
+            const name = document.getElementById('new-course-name').value;
+            if (!name) return alert("Vänligen ange ett namn på banan");
+            if (newCourseTrack.length < 2) return alert("Banan måste ha minst en start och en kontroll/mål");
+
+            google.script.run
+                .withSuccessHandler(() => {
+                    alert("Bana sparad!");
+                    window.location.reload();
+                })
+                .saveCourse({ name, track: newCourseTrack });
+        }
         function initMap() {
             if (map) return;
             
