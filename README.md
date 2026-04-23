@@ -34,7 +34,7 @@ Skapa ett nytt Google Spreadsheet och ge det två flikar:
 
 ### 4. Bädda in på Google Sites
 1. Gå till din Google Site.
-2. Välj **Embed** -> **URL**.
+2. Infoga **knapp** -> **URL**.
 3. Klistra in Web App URL:en.
 4. (Valfritt) Lägg till parametrar: `?mode=create` eller `?banaId=XYZ`.
 
