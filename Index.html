@@ -300,6 +300,142 @@
             z-index: 2000;
             display: none;
         }
+
+        /* Split-view Editor Styles */
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+        }
+
+        #map-create {
+            height: 50%;
+            width: 100%;
+            min-height: 250px;
+        }
+
+        .editor-sidebar {
+            flex-grow: 1;
+            background: var(--bg);
+            padding: 15px;
+            overflow-y: auto;
+            border-top: 1px solid var(--glass);
+            z-index: 1001;
+        }
+
+        .editor-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .editor-item {
+            background: var(--card-bg);
+            border: 1px solid var(--glass);
+            padding: 12px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .editor-item.active {
+            border-color: var(--primary);
+            background: rgba(37, 99, 235, 0.1);
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .editor-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .editor-item-controls {
+            display: flex;
+            gap: 5px;
+        }
+
+        .btn-small {
+            padding: 6px;
+            font-size: 0.7rem;
+            border-radius: 8px;
+            min-width: 32px;
+            height: 32px;
+        }
+
+        .radius-control {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 0.75rem;
+            opacity: 0.9;
+        }
+
+        .radius-slider-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .radius-slider {
+            flex-grow: 1;
+            accent-color: var(--primary);
+            height: 4px;
+        }
+
+        .accuracy-display {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(0,0,0,0.3);
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+        }
+
+        .accuracy-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+            display: inline-block;
+        }
+
+        .accuracy-good { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+        .accuracy-fair { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+        .accuracy-poor { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+
+        .leaflet-tooltip-pane .control-label {
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid var(--glass);
+            color: white;
+            font-weight: 600;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+
+        @media (min-width: 768px) {
+            .editor-container {
+                flex-direction: row;
+            }
+            #map-create {
+                height: 100%;
+                width: 60%;
+            }
+            .editor-sidebar {
+                width: 40%;
+                height: 100%;
+                border-top: none;
+                border-left: 1px solid var(--glass);
+            }
+        }
     </style>
 </head>
 <body>
@@ -339,16 +475,31 @@
 
         <!-- View: Create -->
         <div id="view-create" class="view" style="padding:0;">
-            <div class="builder-controls">
-                <input type="text" id="new-course-name" placeholder="Banans namn..." style="padding:10px;">
-                <div style="display:flex; gap:10px;">
-                    <button class="btn btn-primary" style="flex:1; padding:10px;" onclick="saveNewCourse()">SPARA BANA</button>
-                    <button class="btn btn-outline" style="flex:1; padding:10px;" onclick="showView('setup')">AVBRYT</button>
+            <div class="editor-container">
+                <div id="map-create"></div>
+                
+                <div class="editor-sidebar">
+                    <div class="builder-controls-header" style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
+                        <input type="text" id="new-course-name" placeholder="Banans namn..." style="padding:12px; width:100%;">
+                        
+                        <div class="accuracy-display" id="editor-accuracy-box">
+                            <span><span class="accuracy-dot" id="editor-accuracy-dot"></span> GPS-Precision: <span id="editor-accuracy-val">--</span>m</span>
+                            <button class="btn btn-primary btn-small" onclick="markCurrentPosition()">MARKERA HÄR</button>
+                        </div>
+                        
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn btn-primary" style="flex:1; padding:12px; font-size:0.9rem;" onclick="saveNewCourse()">SPARA BANA</button>
+                            <button class="btn btn-outline" style="flex:1; padding:12px; font-size:0.9rem;" onclick="showView('setup')">AVBRYT</button>
+                        </div>
+                    </div>
+
+                    <h3 class="stat-label">Kontroller</h3>
+                    <div id="editor-control-list" class="editor-list">
+                        <!-- Control items injected here -->
+                        <p style="text-align:center; opacity:0.5; font-size:0.8rem;">Klicka på kartan eller knappen ovan för att lägga till en kontroll.</p>
+                    </div>
                 </div>
             </div>
-
-            <div class="builder-tip">Klicka på kartan för att lägga till kontroller</div>
-            <div id="map-create" style="height:100%; width:100%;"></div>
         </div>
 
         <!-- View: Race -->
@@ -417,13 +568,22 @@
             totalDistance: 0,
             splits: [],
             userPos: null,
-            lastCountedPos: null, // Track the last position used for distance calculation
+            lastCountedPos: null,
+            gpsAccuracy: null,
             watchId: null,
-            timerId: null
+            timerId: null,
+            newCourseTrack: []
+        };
+
+        const baseLayers = {
+            "Mörk Karta": L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }),
+            "Satellit": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EBP, and the GIS User Community'
+            })
         };
 
         let map, userMarker, pathLine, controlMarkers = [];
-        let createMap, newCourseMarkers = [], newCourseTrack = [];
+        let createMap, editorMarkers = [], editorCircles = [], editorPolyline;
         let wakeLock = null;
 
         // --- Initialization ---
@@ -502,63 +662,217 @@
             
             createMap = L.map('map-create', {
                 zoomControl: false,
-                attributionControl: false
+                attributionControl: false,
+                layers: [baseLayers["Mörk Karta"]]
             }).setView([59.3293, 18.0686], 15);
 
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                maxZoom: 20
-            }).addTo(createMap);
+            L.control.layers(baseLayers).addTo(createMap);
 
             createMap.on('click', (e) => {
                 addControlToNewCourse(e.latlng.lat, e.latlng.lng);
             });
+            
+            // Start GPS for Field Mode
+            startGPS();
+        }
+
+        function markCurrentPosition() {
+            if (!state.userPos) return alert("Hittar inte din position än. Vänta på GPS-signal.");
+            
+            const acc = state.gpsAccuracy || 999;
+            if (acc > 15) {
+                if (!confirm(`Dålig GPS-precision (${Math.round(acc)}m). Vill du ändå lägga till en kontroll här?`)) return;
+            }
+            
+            addControlToNewCourse(state.userPos.lat, state.userPos.lng);
         }
 
         function addControlToNewCourse(lat, lng) {
-            const name = newCourseTrack.length === 0 ? 'Start' : 
-                         (confirm('Är detta målgången?') ? 'Mål' : `Kontroll ${newCourseTrack.length}`);
+            const name = state.newCourseTrack.length === 0 ? 'Start' : 
+                         (state.newCourseTrack.length === 1 ? 'K1' : `K${state.newCourseTrack.length}`);
             
-            const control = { name, lat, lng, radius: 20 };
-            newCourseTrack.push(control);
+            const control = { 
+                id: 'ctrl_' + Date.now(),
+                name, 
+                lat, 
+                lng, 
+                radius: 15 
+            };
+            
+            // Check if radius < accuracy
+            if (state.gpsAccuracy && control.radius < state.gpsAccuracy) {
+                // We show the warning but allow it
+                console.warn("Radius smaller than accuracy");
+            }
 
-            const icon = L.divIcon({
-                className: 'custom-div-icon',
-                html: `<div class="control-marker"></div><div style="position:absolute; top:25px; left:-10px; font-size:0.7rem; width:50px;">${name}</div>`,
-                iconSize: [24, 24],
-                iconAnchor: [12, 12]
+            state.newCourseTrack.push(control);
+            renderEditorTrack();
+            renderEditorList();
+        }
+
+        function renderEditorTrack() {
+            // Clear existing markers/circles
+            editorMarkers.forEach(m => createMap.removeLayer(m));
+            editorCircles.forEach(c => createMap.removeLayer(c));
+            if (editorPolyline) createMap.removeLayer(editorPolyline);
+            editorMarkers = [];
+            editorCircles = [];
+
+            const trackCoords = state.newCourseTrack.map(p => [p.lat, p.lng]);
+            
+            state.newCourseTrack.forEach((p, idx) => {
+                // Marker
+                const icon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div class="control-marker"></div>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+                
+                const m = L.marker([p.lat, p.lng], {icon})
+                    .addTo(createMap)
+                    .bindTooltip(p.name, {permanent: true, direction: 'top', className: 'control-label'});
+                
+                m.on('click', () => highlightEditorItem(p.id));
+                editorMarkers.push(m);
+
+                // Radius circle
+                const c = L.circle([p.lat, p.lng], {
+                    radius: p.radius,
+                    color: 'var(--primary)',
+                    fillOpacity: 0.1,
+                    weight: 1
+                }).addTo(createMap);
+                editorCircles.push(c);
             });
 
-            L.marker([lat, lng], {icon}).addTo(createMap);
-            
-            if (newCourseTrack.length > 1) {
-                const prev = newCourseTrack[newCourseTrack.length - 2];
-                L.polyline([[prev.lat, prev.lng], [lat, lng]], {color: 'rgba(255,255,255,0.5)', dashArray: '5, 10'}).addTo(createMap);
+            if (trackCoords.length > 1) {
+                editorPolyline = L.polyline(trackCoords, {color: 'rgba(255,255,255,0.5)', dashArray: '5, 10'}).addTo(createMap);
             }
+        }
+
+        function renderEditorList() {
+            const list = document.getElementById('editor-control-list');
+            if (state.newCourseTrack.length === 0) {
+                list.innerHTML = '<p style="text-align:center; opacity:0.5; font-size:0.8rem;">Klicka på kartan eller knappen ovan för att lägga till en kontroll.</p>';
+                return;
+            }
+
+            list.innerHTML = state.newCourseTrack.map((c, idx) => `
+                <div class="editor-item" id="editor-item-${c.id}" onclick="focusOnControl('${c.id}')">
+                    <div class="editor-item-header">
+                        <input type="text" value="${c.name}" onchange="updateControlName('${c.id}', this.value)" 
+                               style="background:transparent; border:none; color:white; font-weight:600; font-size:0.9rem; padding:4px; width:100px;" 
+                               onclick="event.stopPropagation()">
+                        
+                        <div class="editor-item-controls">
+                            <button class="btn btn-outline btn-small" onclick="moveControl('${c.id}', -1); event.stopPropagation()">↑</button>
+                            <button class="btn btn-outline btn-small" onclick="moveControl('${c.id}', 1); event.stopPropagation()">↓</button>
+                            <button class="btn btn-outline btn-small" style="color:var(--danger)" onclick="deleteControl('${c.id}'); event.stopPropagation()">✕</button>
+                        </div>
+                    </div>
+                    
+                    <div class="radius-control">
+                        <div style="display:flex; justify-content:space-between;">
+                            <span>Trigg-radie</span>
+                            <span>${c.radius}m</span>
+                        </div>
+                        <div class="radius-slider-group">
+                            <input type="range" class="radius-slider" min="3" max="20" value="${c.radius}" 
+                                   oninput="updateControlRadius('${c.id}', this.value)"
+                                   onchange="checkRadiusAccuracy('${c.id}', this.value)"
+                                   onclick="event.stopPropagation()">
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function focusOnControl(id) {
+            const control = state.newCourseTrack.find(c => c.id === id);
+            if (control && createMap) {
+                createMap.setView([control.lat, control.lng], 18);
+                highlightEditorItem(id);
+            }
+        }
+
+        function highlightEditorItem(id) {
+            document.querySelectorAll('.editor-item').forEach(el => el.classList.remove('active'));
+            const item = document.getElementById(`editor-item-${id}`);
+            if (item) {
+                item.classList.add('active');
+                item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        function updateControlName(id, name) {
+            const control = state.newCourseTrack.find(c => c.id === id);
+            if (control) {
+                control.name = name;
+                renderEditorTrack();
+            }
+        }
+
+        function updateControlRadius(id, radius) {
+            const control = state.newCourseTrack.find(c => c.id === id);
+            if (control) {
+                control.radius = parseInt(radius);
+                renderEditorTrack();
+                // Update radius display in list without full re-render
+                const item = document.getElementById(`editor-item-${id}`);
+                if (item) item.querySelector('.radius-control span:last-child').innerText = radius + 'm';
+            }
+        }
+
+        function checkRadiusAccuracy(id, radius) {
+            const r = parseInt(radius);
+            if (state.gpsAccuracy && r < state.gpsAccuracy) {
+                alert(`Varning: Din valda radie (${r}m) är mindre än GPS-osäkerheten (${Math.round(state.gpsAccuracy)}m). Detta kan göra kontrollen svår att stämpla.`);
+            }
+        }
+
+        function deleteControl(id) {
+            state.newCourseTrack = state.newCourseTrack.filter(c => c.id !== id);
+            renderEditorTrack();
+            renderEditorList();
+        }
+
+        function moveControl(id, dir) {
+            const idx = state.newCourseTrack.findIndex(c => c.id === id);
+            if (idx === -1) return;
+            const newIdx = idx + dir;
+            if (newIdx < 0 || newIdx >= state.newCourseTrack.length) return;
+            
+            const temp = state.newCourseTrack[idx];
+            state.newCourseTrack[idx] = state.newCourseTrack[newIdx];
+            state.newCourseTrack[newIdx] = temp;
+            
+            renderEditorTrack();
+            renderEditorList();
         }
 
         function saveNewCourse() {
             const name = document.getElementById('new-course-name').value;
             if (!name) return alert("Vänligen ange ett namn på banan");
-            if (newCourseTrack.length < 2) return alert("Banan måste ha minst en start och en kontroll/mål");
+            if (state.newCourseTrack.length < 2) return alert("Banan måste ha minst en start och en kontroll/mål");
 
             google.script.run
                 .withSuccessHandler(() => {
                     alert("Bana sparad!");
                     window.location.reload();
                 })
-                .saveCourse({ name, track: newCourseTrack });
+                .saveCourse({ name, track: state.newCourseTrack });
         }
         function initMap() {
             if (map) return;
             
             map = L.map('map', {
                 zoomControl: false,
-                attributionControl: false
+                attributionControl: false,
+                layers: [baseLayers["Mörk Karta"]]
             }).setView([59.3293, 18.0686], 15);
 
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                maxZoom: 20
-            }).addTo(map);
+            L.control.layers(baseLayers).addTo(map);
 
             // Draw track
             const trackCoords = state.selectedCourse.track.map(p => [p.lat, p.lng]);
@@ -675,11 +989,38 @@
             );
         }
 
+        function updateEditorAccuracy(accuracy) {
+            const valEl = document.getElementById('editor-accuracy-val');
+            const dotEl = document.getElementById('editor-accuracy-dot');
+            if (!valEl || !dotEl) return;
+            
+            valEl.innerText = Math.round(accuracy);
+            
+            dotEl.className = 'accuracy-dot';
+            if (accuracy <= 10) dotEl.classList.add('accuracy-good');
+            else if (accuracy <= 25) dotEl.classList.add('accuracy-fair');
+            else dotEl.classList.add('accuracy-poor');
+        }
+
         function updateUserLocation(lat, lng, accuracy) {
+            state.gpsAccuracy = accuracy;
             const newPos = { lat, lng, t: Date.now() };
             
             // Accuracy warning
             document.getElementById('accuracy-warning').style.display = accuracy > 30 ? 'block' : 'none';
+            
+            // Update Editor UI if active
+            if (state.view === 'create') {
+                updateEditorAccuracy(accuracy);
+                // Also update user marker on createMap if it exists
+                if (createMap) {
+                    if (!window.editorUserMarker) {
+                        window.editorUserMarker = L.circleMarker([lat, lng], { radius: 5, color: 'var(--primary)' }).addTo(createMap);
+                    } else {
+                        window.editorUserMarker.setLatLng([lat, lng]);
+                    }
+                }
+            }
 
             // Distance Tracking with Jitter Filter
             if (!state.lastCountedPos) {
@@ -695,7 +1036,8 @@
                     state.path.push(newPos);
                     
                     // Update stats UI
-                    document.getElementById('stat-dist').innerText = Math.round(state.totalDistance) + 'm';
+                    const distEl = document.getElementById('stat-dist');
+                    if (distEl) distEl.innerText = Math.round(state.totalDistance) + 'm';
                     
                     // Update Path Line on map
                     if (pathLine) pathLine.addLatLng([lat, lng]);
@@ -720,7 +1062,7 @@
             if (!target) return;
 
             const dist = haversine(lat, lng, target.lat, target.lng);
-            const radius = target.radius || 15;
+            const radius = target.radius || 15; // Use individual radius
 
             if (dist <= radius) {
                 punchControl();
