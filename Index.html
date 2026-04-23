@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
     <style>
         :root {
@@ -410,6 +411,27 @@
         .accuracy-fair { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
         .accuracy-poor { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
 
+        .editor-item.warning {
+            border-color: var(--danger);
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .drag-handle {
+            cursor: grab;
+            color: var(--text);
+            opacity: 0.5;
+            padding: 5px;
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+
+        .drag-handle:active { cursor: grabbing; }
+
+        .sortable-ghost {
+            opacity: 0.4;
+            background: var(--primary) !important;
+        }
+
         .leaflet-tooltip-pane .control-label {
             background: rgba(15, 23, 42, 0.9);
             border: 1px solid var(--glass);
@@ -480,16 +502,24 @@
                 
                 <div class="editor-sidebar">
                     <div class="builder-controls-header" style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;">
+                        <div class="input-group" style="margin-bottom:0;">
+                            <label class="stat-label">Välj befintlig bana att ändra</label>
+                            <select id="course-selector" onchange="loadCourseForEditing(this.value)" style="width:100%; padding:10px; border-radius:10px; background:var(--card-bg); color:white; border:1px solid var(--glass);">
+                                <option value="">-- Ny bana --</option>
+                            </select>
+                        </div>
+
                         <input type="text" id="new-course-name" placeholder="Banans namn..." style="padding:12px; width:100%;">
                         
                         <div class="accuracy-display" id="editor-accuracy-box">
-                            <span><span class="accuracy-dot" id="editor-accuracy-dot"></span> GPS-Precision: <span id="editor-accuracy-val">--</span>m</span>
+                            <span><span class="accuracy-dot" id="editor-accuracy-dot"></span> GPS: <span id="editor-accuracy-val">--</span>m</span>
                             <button class="btn btn-primary btn-small" onclick="markCurrentPosition()">MARKERA HÄR</button>
                         </div>
                         
-                        <div style="display:flex; gap:10px;">
-                            <button class="btn btn-primary" style="flex:1; padding:12px; font-size:0.9rem;" onclick="saveNewCourse()">SPARA BANA</button>
-                            <button class="btn btn-outline" style="flex:1; padding:12px; font-size:0.9rem;" onclick="showView('setup')">AVBRYT</button>
+                        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                            <button class="btn btn-primary" style="flex:2; padding:12px; font-size:0.8rem;" onclick="saveNewCourse()">SPARA</button>
+                            <button class="btn btn-outline" style="flex:1; padding:12px; font-size:0.8rem;" onclick="duplicateCurrentCourse()">KOPIA</button>
+                            <button class="btn btn-outline" style="flex:1; padding:12px; font-size:0.8rem;" onclick="showView('setup')">AVBRYT</button>
                         </div>
                     </div>
 
@@ -572,7 +602,8 @@
             gpsAccuracy: null,
             watchId: null,
             timerId: null,
-            newCourseTrack: []
+            newCourseTrack: [],
+            editingCourseId: null // New
         };
 
         const baseLayers = {
@@ -600,9 +631,38 @@
                 .withSuccessHandler(courses => {
                     state.courses = courses;
                     renderCourseList();
+                    populateCourseSelector(); // New
                     loadFromStorage();
                 })
                 .getCourses();
+        }
+
+        function populateCourseSelector() {
+            const sel = document.getElementById('course-selector');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">-- Ny bana --</option>' + 
+                state.courses.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        }
+
+        function loadCourseForEditing(id) {
+            if (!id) {
+                state.newCourseTrack = [];
+                state.editingCourseId = null;
+                document.getElementById('new-course-name').value = '';
+            } else {
+                const course = state.courses.find(c => String(c.id) === String(id));
+                if (course) {
+                    state.newCourseTrack = JSON.parse(JSON.stringify(course.track)); // Deep copy
+                    state.editingCourseId = course.id;
+                    document.getElementById('new-course-name').value = course.name;
+                }
+            }
+            renderEditorTrack();
+            renderEditorList();
+            if (state.newCourseTrack.length > 0) {
+                const bounds = L.latLngBounds(state.newCourseTrack.map(p => [p.lat, p.lng]));
+                createMap.fitBounds(bounds, {padding: [50, 50]});
+            }
         }
 
         function checkParams() {
@@ -626,13 +686,25 @@
                 <div class="course-card ${String(state.selectedCourse?.id) === String(c.id) ? 'selected' : ''}" onclick="selectCourse('${c.id}')">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <div style="font-weight:600">${c.name}</div>
-                        <span class="selected-badge">Vald</span>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <button class="btn btn-outline btn-small" onclick="editCourse('${c.id}'); event.stopPropagation()" style="padding:6px 10px; font-size:0.7rem; height:auto; min-width:auto;">REDIGERA</button>
+                            <span class="selected-badge">Vald</span>
+                        </div>
                     </div>
                     <div style="font-size:0.8rem; opacity:0.7">${c.track ? c.track.length : 0} kontroller</div>
                 </div>
             `).join('');
             
             document.getElementById('start-btn').disabled = !state.selectedCourse;
+        }
+
+        function editCourse(id) {
+            showView('create');
+            setTimeout(() => {
+                loadCourseForEditing(id);
+                const sel = document.getElementById('course-selector');
+                if (sel) sel.value = id;
+            }, 200);
         }
 
         function selectCourse(id) {
@@ -663,7 +735,7 @@
             createMap = L.map('map-create', {
                 zoomControl: false,
                 attributionControl: false,
-                layers: [baseLayers["Mörk Karta"]]
+                layers: [baseLayers["Satellit"]] // Changed from Dark to Satellite
             }).setView([59.3293, 18.0686], 15);
 
             L.control.layers(baseLayers).addTo(createMap);
@@ -684,6 +756,7 @@
                 if (!confirm(`Dålig GPS-precision (${Math.round(acc)}m). Vill du ändå lägga till en kontroll här?`)) return;
             }
             
+            if (navigator.vibrate) navigator.vibrate(50); // Confirm with vibration
             addControlToNewCourse(state.userPos.lat, state.userPos.lng);
         }
 
@@ -759,8 +832,9 @@
             }
 
             list.innerHTML = state.newCourseTrack.map((c, idx) => `
-                <div class="editor-item" id="editor-item-${c.id}" onclick="focusOnControl('${c.id}')">
+                <div class="editor-item ${c.radius < 5 ? 'warning' : ''}" id="editor-item-${c.id}" data-id="${c.id}" onclick="focusOnControl('${c.id}')">
                     <div class="editor-item-header">
+                        <div class="drag-handle">☰</div>
                         <input type="text" value="${c.name}" onchange="updateControlName('${c.id}', this.value)" 
                                style="background:transparent; border:none; color:white; font-weight:600; font-size:0.9rem; padding:4px; width:100px;" 
                                onclick="event.stopPropagation()">
@@ -772,6 +846,8 @@
                         </div>
                     </div>
                     
+                    ${c.radius < 5 ? '<div style="color:var(--danger); font-size:0.6rem; font-weight:600; padding:0 4px;">⚠️ Kräver extrem GPS-precision</div>' : ''}
+
                     <div class="radius-control">
                         <div style="display:flex; justify-content:space-between;">
                             <span>Trigg-radie</span>
@@ -786,6 +862,30 @@
                     </div>
                 </div>
             `).join('');
+            
+            initSortable();
+        }
+
+        let sortableInstance;
+        function initSortable() {
+            const el = document.getElementById('editor-control-list');
+            if (!el) return;
+            if (sortableInstance) sortableInstance.destroy();
+            
+            sortableInstance = Sortable.create(el, {
+                animation: 150,
+                handle: '.drag-handle',
+                onEnd: () => {
+                    const newTrack = [];
+                    el.querySelectorAll('.editor-item').forEach(item => {
+                        const id = item.dataset.id;
+                        const control = state.newCourseTrack.find(c => c.id === id);
+                        if (control) newTrack.push(control);
+                    });
+                    state.newCourseTrack = newTrack;
+                    renderEditorTrack();
+                }
+            });
         }
 
         function focusOnControl(id) {
@@ -856,15 +956,40 @@
             if (!name) return alert("Vänligen ange ett namn på banan");
             if (state.newCourseTrack.length < 2) return alert("Banan måste ha minst en start och en kontroll/mål");
 
+            const courseData = { 
+                id: state.editingCourseId, 
+                name: name, 
+                track: state.newCourseTrack 
+            };
+
+            const run = state.editingCourseId ? google.script.run.updateCourse(courseData) : google.script.run.saveCourse(courseData);
+
+            run.withSuccessHandler(() => {
+                alert("Bana sparad!");
+                window.location.reload();
+            });
+        }
+
+        function duplicateCurrentCourse() {
+            const name = document.getElementById('new-course-name').value;
+            if (!name) return alert("Vänligen ange ett namn på banan");
+            if (state.newCourseTrack.length < 2) return alert("Banan måste ha minst en kontroll");
+
             google.script.run
-                .withSuccessHandler(() => {
-                    alert("Bana sparad!");
+                .withSuccessHandler((res) => {
+                    alert("Kopia sparad: " + res.name);
                     window.location.reload();
                 })
-                .saveCourse({ name, track: state.newCourseTrack });
+                .duplicateCourse({ name: name, track: state.newCourseTrack });
         }
+
         function initMap() {
-            if (map) return;
+            if (map) {
+                // Ensure correct layer if map is reused
+                map.addLayer(baseLayers["Mörk Karta"]);
+                map.removeLayer(baseLayers["Satellit"]);
+                return;
+            }
             
             map = L.map('map', {
                 zoomControl: false,

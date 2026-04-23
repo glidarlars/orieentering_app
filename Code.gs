@@ -100,6 +100,44 @@ function saveCourse(course) {
 }
 
 /**
+ * Update an existing course in the "Courses" sheet.
+ */
+function updateCourse(course) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Courses');
+  if (!sheet) return { success: false, error: 'Sheet not found' };
+  
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(course.id)) {
+      sheet.getRange(i + 1, 2, 1, 2).setValues([[course.name, JSON.stringify(course.track)]]);
+      return { success: true };
+    }
+  }
+  return { success: false, error: 'Course not found' };
+}
+
+/**
+ * Duplicate an existing course (Save as Copy).
+ */
+function duplicateCourse(course) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Courses');
+  if (!sheet) return { success: false, error: 'Sheet not found' };
+  
+  const id = 'c_' + Date.now();
+  const newName = "Kopia av " + course.name;
+  
+  sheet.appendRow([
+    id,
+    newName,
+    JSON.stringify(course.track)
+  ]);
+  
+  return { success: true, id: id, name: newName };
+}
+
+/**
  * Utility to include JS/CSS files in the HTML template
  */
 function include(filename) {
