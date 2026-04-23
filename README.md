@@ -39,6 +39,6 @@ Skapa ett nytt Google Spreadsheet och ge det två flikar:
 4. (Valfritt) Lägg till parametrar: `?mode=create` eller `?banaId=XYZ`.
 
 ## För utvecklare
-- **Geofencing**: Kontrolleras i `checkGeofence()` i `Index.html`. Standardradie är 15-20m.
-- **Kartlager**: Använder CartoDB Dark Matter. Kan bytas ut i `initMap()`.
+- **Geofencing**: Kontrolleras i `checkGeofence()` i `Index.html`. Standardradie är 15-20m, is possible to set manulay in edit mode.
+- **Kartlager**: Använder CartoDB Dark Matter / satelite view poissibility in edit mode. Kan bytas ut i `initMap()`.
 - **Ljud/Vibration**: Triggat vid "Punch". Kräver användarinteraktion (Klick på Start) för att tillåtas av moderna webbläsare.
