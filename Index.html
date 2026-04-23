@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <title>Orienteering Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    
+    <!-- External Resources -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-glow: rgba(37, 99, 235, 0.4);
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.8);
+            --text: #f8fafc;
+            --accent: #10b981;
+            --danger: #ef4444;
+            --glass: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            overflow: hidden; /* Prevent scrolling for the full-screen map app */
+            height: 100vh;
+            width: 100vw;
+        }
+
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* Views */
+        .view {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+            padding: 20px;
+            overflow-y: auto;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .view.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Map UI */
+        #map {
+            flex-grow: 1;
+            width: 100%;
+            z-index: 1;
+        }
+
+        .stats-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass);
+            padding: 10px;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+
+        .stat-value {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: var(--primary);
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.7;
+        }
+
+        .control-panel {
+            position: absolute;
+            bottom: 30px;
+            left: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 16px 24px;
+            border-radius: 16px;
+            border: none;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white;
+        }
+
+        .btn-primary:active {
+            transform: scale(0.96);
+        }
+
+        .btn-outline {
+            background: var(--card-bg);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--glass);
+            color: white;
+        }
+
+        /* Setup View Styles */
+        .setup-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .course-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 20px;
+            margin-bottom: 15px;
+            border: 1px solid var(--glass);
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .course-card.selected {
+            border-color: var(--primary);
+            background: rgba(37, 99, 235, 0.1);
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 16px;
+            border-radius: 12px;
+            background: var(--card-bg);
+            border: 1px solid var(--glass);
+            color: white;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+
+        /* Result View Styles */
+        .result-summary {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(16, 185, 129, 0.1));
+            padding: 30px;
+            border-radius: 24px;
+            text-align: center;
+            margin-bottom: 20px;
+            border: 1px solid var(--glass);
+        }
+
+        .split-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .split-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px;
+            background: var(--card-bg);
+            border-radius: 12px;
+            font-size: 0.9rem;
+        }
+
+        /* Custom Leaflet Markers */
+        .user-marker {
+            width: 20px;
+            height: 20px;
+            background: var(--primary);
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .control-marker {
+            width: 24px;
+            height: 24px;
+            background: transparent;
+            border: 4px solid var(--danger);
+            border-radius: 50%;
+        }
+
+        .control-marker.punched {
+            border-color: var(--accent);
+            background: rgba(16, 185, 129, 0.4);
+        }
+
+        #accuracy-warning {
+            position: fixed;
+            bottom: 100px;
+            left: 20px;
+            right: 20px;
+            background: var(--danger);
+            color: white;
+            padding: 8px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 0.8rem;
+            z-index: 2000;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <!-- View: Setup -->
+        <div id="view-setup" class="view active">
+            <div class="setup-header">
+                <h1>Orienteering <span style="color:var(--primary)">Pro</span></h1>
+                <p>Välj bana och starta äventyret</p>
+            </div>
+
+            <div class="input-group">
+                <label class="stat-label">Ditt Namn</label>
+                <input type="text" id="user-name" placeholder="Skriv in namn..." value="Löpare">
+            </div>
+
+            <div id="course-list">
+                <!-- Courses injected here -->
+                <p style="text-align:center; opacity:0.5;">Laddar banor...</p>
+            </div>
+
+            <div style="margin-top:auto; padding-bottom: 20px;">
+                <button class="btn btn-primary" onclick="startRace()" id="start-btn" disabled>
+                    STARTA LOPP
+                </button>
+            </div>
+        </div>
+
+        <!-- View: Race -->
+        <div id="view-race" class="view" style="padding:0;">
+            <div class="stats-overlay">
+                <div class="stat-card">
+                    <span class="stat-label">Tid</span>
+                    <span class="stat-value" id="stat-time">00:00</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Distans</span>
+                    <span class="stat-value" id="stat-dist">0m</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Nästa</span>
+                    <span class="stat-value" id="stat-next">---</span>
+                </div>
+            </div>
+
+            <div id="map"></div>
+
+            <div id="accuracy-warning">Låg GPS-precision...</div>
+
+            <div class="control-panel">
+                <button class="btn btn-outline" onclick="centerMap()">CENTRERA KARTA</button>
+                <button class="btn btn-primary" style="background:var(--danger)" onclick="confirmFinish()">AVSLUTA LOPP</button>
+            </div>
+        </div>
+
+        <!-- View: Results -->
+        <div id="view-results" class="view">
+            <div class="result-summary">
+                <h2 id="res-status">Bra jobbat!</h2>
+                <div style="font-size: 3rem; font-weight: 800; margin: 10px 0;" id="res-time">00:00</div>
+                <p id="res-stats-text">Distans: 0m | Omväg: 0%</p>
+            </div>
+
+            <h3 class="stat-label">Mellantider</h3>
+            <div id="res-splits" class="split-list">
+                <!-- Splits injected here -->
+            </div>
+
+            <div style="margin-top:30px; display:flex; gap: 10px;">
+                <button class="btn btn-primary" style="flex:1" onclick="window.location.reload()">NYTT LOPP</button>
+                <button class="btn btn-outline" style="flex:1" onclick="showView('setup')">HEM</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio assets -->
+    <audio id="sound-punch" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+    <audio id="sound-finish" src="https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3"></audio>
+
+    <script>
+        // --- State Management ---
+        let state = {
+            view: 'setup',
+            userName: 'Löpare',
+            courses: [],
+            selectedCourse: null,
+            isRunning: false,
+            startTime: null,
+            elapsedSeconds: 0,
+            currentControlIndex: 0,
+            path: [], // Array of {lat, lng, t}
+            totalDistance: 0,
+            splits: [],
+            userPos: null,
+            watchId: null,
+            timerId: null
+        };
+
+        let map, userMarker, pathLine, controlMarkers = [];
+
+        // --- Initialization ---
+        window.onload = () => {
+            initApp();
+            checkParams();
+        };
+
+        function initApp() {
+            // Load courses from Backend
+            google.script.run
+                .withSuccessHandler(courses => {
+                    state.courses = courses;
+                    renderCourseList();
+                    loadFromStorage();
+                })
+                .getCourses();
+        }
+
+        function checkParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const mode = urlParams.get('mode');
+            const bId = urlParams.get('banaId');
+            
+            if (mode === 'results') showView('results');
+            // If bId is provided, we could auto-select it once loaded
+        }
+
+        function renderCourseList() {
+            const list = document.getElementById('course-list');
+            list.innerHTML = state.courses.map(c => `
+                <div class="course-card ${state.selectedCourse?.id === c.id ? 'selected' : ''}" onclick="selectCourse('${c.id}')">
+                    <div style="font-weight:600">${c.name}</div>
+                    <div style="font-size:0.8rem; opacity:0.7">${c.track.length} kontroller</div>
+                </div>
+            `).join('');
+            
+            document.getElementById('start-btn').disabled = !state.selectedCourse;
+        }
+
+        function selectCourse(id) {
+            state.selectedCourse = state.courses.find(c => c.id === id);
+            renderCourseList();
+        }
+
+        function showView(viewId) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById(`view-${viewId}`).classList.add('active');
+            state.view = viewId;
+            
+            if (viewId === 'race') {
+                setTimeout(initMap, 100);
+            }
+        }
+
+        // --- Map & GPS Logic ---
+        function initMap() {
+            if (map) return;
+            
+            map = L.map('map', {
+                zoomControl: false,
+                attributionControl: false
+            }).setView([59.3293, 18.0686], 15);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 20
+            }).addTo(map);
+
+            // Draw track
+            const trackCoords = state.selectedCourse.track.map(p => [p.lat, p.lng]);
+            L.polyline(trackCoords, {color: 'rgba(255,255,255,0.3)', dashArray: '5, 10', weight: 2}).addTo(map);
+            
+            // Add Control Markers
+            state.selectedCourse.track.forEach((p, idx) => {
+                const icon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div class="control-marker" id="marker-${idx}"></div>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+                const m = L.marker([p.lat, p.lng], {icon}).addTo(map);
+                controlMarkers.push(m);
+            });
+
+            // User Path Line
+            pathLine = L.polyline([], {color: 'var(--primary)', weight: 4}).addTo(map);
+
+            // Initial User Marker
+            userMarker = L.marker([0,0], {
+                icon: L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div class="user-marker"></div>`,
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                })
+            }).addTo(map);
+        }
+
+        function startRace() {
+            state.userName = document.getElementById('user-name').value || 'Löpare';
+            state.isRunning = true;
+            state.startTime = Date.now();
+            state.currentControlIndex = 0;
+            state.path = [];
+            state.totalDistance = 0;
+            state.splits = [];
+            
+            showView('race');
+            startGPS();
+            startTimer();
+            saveToStorage();
+        }
+
+        function startGPS() {
+            if (!navigator.geolocation) return alert("GPS stöds ej");
+
+            state.watchId = navigator.geolocation.watchPosition(
+                pos => {
+                    const { latitude, longitude, accuracy } = pos.coords;
+                    updateUserLocation(latitude, longitude, accuracy);
+                },
+                err => console.error(err),
+                { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+            );
+        }
+
+        function updateUserLocation(lat, lng, accuracy) {
+            const newPos = { lat, lng, t: Date.now() };
+            
+            // Accuracy warning
+            document.getElementById('accuracy-warning').style.display = accuracy > 30 ? 'block' : 'none';
+
+            if (state.userPos) {
+                const d = haversine(state.userPos.lat, state.userPos.lng, lat, lng);
+                if (d > 2) { // Only count if moved > 2m to filter jitter
+                    state.totalDistance += d;
+                    state.path.push(newPos);
+                    
+                    // Update stats UI
+                    document.getElementById('stat-dist').innerText = Math.round(state.totalDistance) + 'm';
+                }
+            } else {
+                state.path.push(newPos);
+            }
+
+            state.userPos = newPos;
+
+            // Update Map
+            if (userMarker) userMarker.setLatLng([lat, lng]);
+            if (pathLine) pathLine.addLatLng([lat, lng]);
+            
+            // Auto-punch logic
+            checkGeofence(lat, lng);
+            
+            // Stats UI
+            updateNextControlStats();
+            saveToStorage();
+        }
+
+        function checkGeofence(lat, lng) {
+            const target = state.selectedCourse.track[state.currentControlIndex];
+            if (!target) return;
+
+            const dist = haversine(lat, lng, target.lat, target.lng);
+            const radius = target.radius || 15;
+
+            if (dist <= radius) {
+                punchControl();
+            }
+        }
+
+        function punchControl() {
+            const target = state.selectedCourse.track[state.currentControlIndex];
+            
+            // Save split
+            const splitTime = state.elapsedSeconds;
+            state.splits.push({
+                name: target.name,
+                time: splitTime,
+                diff: state.splits.length > 0 ? splitTime - state.splits[state.splits.length-1].time : splitTime
+            });
+
+            // Visual feedback
+            const markerDiv = document.getElementById(`marker-${state.currentControlIndex}`);
+            if (markerDiv) markerDiv.classList.add('punched');
+            
+            // Sound & Vibration
+            document.getElementById('sound-punch').play().catch(()=>{});
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+            state.currentControlIndex++;
+            
+            if (state.currentControlIndex >= state.selectedCourse.track.length) {
+                finishRace();
+            } else {
+                updateNextControlStats();
+            }
+            saveToStorage();
+        }
+
+        function updateNextControlStats() {
+            const target = state.selectedCourse.track[state.currentControlIndex];
+            if (!target || !state.userPos) return;
+            
+            const dist = haversine(state.userPos.lat, state.userPos.lng, target.lat, target.lng);
+            document.getElementById('stat-next').innerText = Math.round(dist) + 'm';
+        }
+
+        function finishRace() {
+            state.isRunning = false;
+            clearInterval(state.timerId);
+            if (state.watchId) navigator.geolocation.clearWatch(state.watchId);
+            
+            document.getElementById('sound-finish').play().catch(()=>{});
+            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+
+            calculateResults();
+        }
+
+        function calculateResults() {
+            const totalTime = formatTime(state.elapsedSeconds);
+            
+            // Calculate Ideal Distance (Straight line between all points)
+            let idealDist = 0;
+            const track = state.selectedCourse.track;
+            for(let i=0; i<track.length-1; i++) {
+                idealDist += haversine(track[i].lat, track[i].lng, track[i+1].lat, track[i+1].lng);
+            }
+            
+            const detourPercent = idealDist > 0 ? Math.round(((state.totalDistance / idealDist) - 1) * 100) : 0;
+
+            // Update UI
+            document.getElementById('res-time').innerText = totalTime;
+            document.getElementById('res-stats-text').innerText = `Distans: ${Math.round(state.totalDistance)}m | Omväg: ${detourPercent}%`;
+            
+            const splitsHtml = state.splits.map(s => `
+                <div class="split-item">
+                    <span>${s.name}</span>
+                    <span style="font-weight:600">${formatTime(s.time)} <span style="font-size:0.7rem; opacity:0.6">(+${formatTime(s.diff)})</span></span>
+                </div>
+            `).join('');
+            document.getElementById('res-splits').innerHTML = splitsHtml;
+
+            // Send to Sheets
+            google.script.run.saveResult({
+                courseId: state.selectedCourse.id,
+                userName: state.userName,
+                totalTime: totalTime,
+                totalDistance: Math.round(state.totalDistance),
+                detourPercent: detourPercent,
+                splits: state.splits
+            });
+
+            showView('results');
+            localStorage.removeItem('orienteering_state');
+        }
+
+        function confirmFinish() {
+            if (confirm("Vill du verkligen avsluta loppet?")) {
+                finishRace();
+            }
+        }
+
+        // --- Utilities ---
+        function haversine(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth radius in meters
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        function startTimer() {
+            state.timerId = setInterval(() => {
+                state.elapsedSeconds = Math.floor((Date.now() - state.startTime) / 1000);
+                document.getElementById('stat-time').innerText = formatTime(state.elapsedSeconds);
+            }, 1000);
+        }
+
+        function formatTime(sec) {
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function centerMap() {
+            if (state.userPos && map) {
+                map.setView([state.userPos.lat, state.userPos.lng], 17);
+            }
+        }
+
+        // --- Persistence ---
+        function saveToStorage() {
+            if (state.isRunning) {
+                localStorage.setItem('orienteering_state', JSON.stringify({
+                    userName: state.userName,
+                    selectedCourseId: state.selectedCourse.id,
+                    startTime: state.startTime,
+                    currentControlIndex: state.currentControlIndex,
+                    totalDistance: state.totalDistance,
+                    splits: state.splits,
+                    path: state.path
+                }));
+            }
+        }
+
+        function loadFromStorage() {
+            const saved = localStorage.getItem('orienteering_state');
+            if (saved) {
+                const data = JSON.parse(saved);
+                if (confirm(`Hittade ett påbörjat lopp för ${data.userName}. Vill du återuppta det?`)) {
+                    state.userName = data.userName;
+                    state.selectedCourse = state.courses.find(c => c.id === data.selectedCourseId);
+                    state.startTime = data.startTime;
+                    state.currentControlIndex = data.currentControlIndex;
+                    state.totalDistance = data.totalDistance;
+                    state.splits = data.splits;
+                    state.path = data.path;
+                    state.isRunning = true;
+                    
+                    showView('race');
+                    startGPS();
+                    startTimer();
+                } else {
+                    localStorage.removeItem('orienteering_state');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
