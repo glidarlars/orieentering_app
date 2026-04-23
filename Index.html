@@ -171,8 +171,25 @@
 
         .course-card.selected {
             border-color: var(--primary);
-            background: rgba(37, 99, 235, 0.1);
+            background: rgba(37, 99, 235, 0.15);
+            box-shadow: 0 0 15px var(--primary-glow);
         }
+
+        .selected-badge {
+            display: none;
+            background: var(--primary);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            font-weight: 800;
+        }
+
+        .course-card.selected .selected-badge {
+            display: inline-block;
+        }
+
 
         .input-group {
             margin-bottom: 20px;
@@ -305,6 +322,11 @@
                 <p style="text-align:center; opacity:0.5;">Laddar banor...</p>
             </div>
 
+            <div id="gps-status-box" style="margin-top:20px; padding:15px; border-radius:12px; background:rgba(0,0,0,0.3); font-size:0.8rem; text-align:center;">
+                <span id="gps-status-text">📍 Kontrollerar GPS-behörighet...</span>
+                <button class="btn btn-outline" style="margin-top:10px; width:100%; padding:8px;" onclick="requestGpsPermission()">TESTA GPS</button>
+            </div>
+
             <div style="margin-top:auto; padding-bottom: 20px; display:flex; flex-direction:column; gap:10px;">
                 <button class="btn btn-primary" onclick="startRace()" id="start-btn" disabled>
                     STARTA LOPP
@@ -324,6 +346,7 @@
                     <button class="btn btn-outline" style="flex:1; padding:10px;" onclick="showView('setup')">AVBRYT</button>
                 </div>
             </div>
+
             <div class="builder-tip">Klicka på kartan för att lägga till kontroller</div>
             <div id="map-create" style="height:100%; width:100%;"></div>
         </div>
@@ -400,12 +423,15 @@
 
         let map, userMarker, pathLine, controlMarkers = [];
         let createMap, newCourseMarkers = [], newCourseTrack = [];
+        let wakeLock = null;
 
         // --- Initialization ---
         window.onload = () => {
             initApp();
             checkParams();
+            requestGpsPermission(true); // Initial check
         };
+
 
         function initApp() {
             // Load courses from Backend
@@ -430,10 +456,18 @@
 
         function renderCourseList() {
             const list = document.getElementById('course-list');
+            if (state.courses.length === 0) {
+                list.innerHTML = '<p style="text-align:center; opacity:0.5;">Inga banor hittades. Skapa en ny!</p>';
+                return;
+            }
+
             list.innerHTML = state.courses.map(c => `
-                <div class="course-card ${state.selectedCourse?.id === c.id ? 'selected' : ''}" onclick="selectCourse('${c.id}')">
-                    <div style="font-weight:600">${c.name}</div>
-                    <div style="font-size:0.8rem; opacity:0.7">${c.track.length} kontroller</div>
+                <div class="course-card ${String(state.selectedCourse?.id) === String(c.id) ? 'selected' : ''}" onclick="selectCourse('${c.id}')">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div style="font-weight:600">${c.name}</div>
+                        <span class="selected-badge">Vald</span>
+                    </div>
+                    <div style="font-size:0.8rem; opacity:0.7">${c.track ? c.track.length : 0} kontroller</div>
                 </div>
             `).join('');
             
@@ -441,9 +475,12 @@
         }
 
         function selectCourse(id) {
-            state.selectedCourse = state.courses.find(c => c.id === id);
+            console.log("Selecting course ID:", id);
+            state.selectedCourse = state.courses.find(c => String(c.id) === String(id));
+            console.log("Selected course object:", state.selectedCourse);
             renderCourseList();
         }
+
 
         function showView(viewId) {
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -564,10 +601,65 @@
             showView('race');
             startGPS();
             startTimer();
+            requestWakeLock();
             saveToStorage();
         }
 
+        // --- Screen Wake Lock ---
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake Lock is active');
+                    wakeLock.addEventListener('release', () => {
+                        console.log('Wake Lock was released');
+                    });
+                } catch (err) {
+                    console.error(`${err.name}, ${err.message}`);
+                }
+            }
+        }
+
+        // Re-acquire wake lock when page becomes visible again
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                requestWakeLock();
+            }
+        });
+
+        function requestGpsPermission(silent = false) {
+            if (!navigator.geolocation) {
+                updateGpsStatus("❌ GPS stöds inte i denna webbläsare", "danger");
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    updateGpsStatus("✅ GPS-åtkomst beviljad", "accent");
+                },
+                err => {
+                    if (!silent) {
+                        if (err.code === 1) {
+                            alert("Du måste godkänna GPS-åtkomst för att appen ska fungera. Om du kör i en iFrame, se till att 'allow-geolocation' är aktiverat.");
+                        }
+                        updateGpsStatus("❌ GPS-åtkomst nekad", "danger");
+                    } else {
+                        updateGpsStatus("⚠️ GPS-behörighet krävs", "danger");
+                    }
+                },
+                { enableHighAccuracy: true, timeout: 5000 }
+            );
+        }
+
+        function updateGpsStatus(text, type) {
+            const el = document.getElementById('gps-status-text');
+            if (!el) return;
+            el.innerText = text;
+            el.style.color = type === 'accent' ? 'var(--accent)' : (type === 'danger' ? 'var(--danger)' : 'inherit');
+        }
+
         function startGPS() {
+
             if (!navigator.geolocation) return alert("GPS stöds ej");
 
             state.watchId = navigator.geolocation.watchPosition(
