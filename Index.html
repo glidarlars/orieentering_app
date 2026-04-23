@@ -417,6 +417,7 @@
             totalDistance: 0,
             splits: [],
             userPos: null,
+            lastCountedPos: null, // Track the last position used for distance calculation
             watchId: null,
             timerId: null
         };
@@ -597,6 +598,8 @@
             state.path = [];
             state.totalDistance = 0;
             state.splits = [];
+            state.lastCountedPos = null;
+            state.userPos = null;
             
             showView('race');
             startGPS();
@@ -678,24 +681,31 @@
             // Accuracy warning
             document.getElementById('accuracy-warning').style.display = accuracy > 30 ? 'block' : 'none';
 
-            if (state.userPos) {
-                const d = haversine(state.userPos.lat, state.userPos.lng, lat, lng);
+            // Distance Tracking with Jitter Filter
+            if (!state.lastCountedPos) {
+                // First position recorded
+                state.lastCountedPos = newPos;
+                state.path.push(newPos);
+                if (pathLine) pathLine.addLatLng([lat, lng]);
+            } else {
+                const d = haversine(state.lastCountedPos.lat, state.lastCountedPos.lng, lat, lng);
                 if (d > 2) { // Only count if moved > 2m to filter jitter
                     state.totalDistance += d;
+                    state.lastCountedPos = newPos; // Update base for next calculation
                     state.path.push(newPos);
                     
                     // Update stats UI
                     document.getElementById('stat-dist').innerText = Math.round(state.totalDistance) + 'm';
+                    
+                    // Update Path Line on map
+                    if (pathLine) pathLine.addLatLng([lat, lng]);
                 }
-            } else {
-                state.path.push(newPos);
             }
 
-            state.userPos = newPos;
+            state.userPos = newPos; // Always update current pos for geofencing and UI
 
-            // Update Map
+            // Update Map Marker
             if (userMarker) userMarker.setLatLng([lat, lng]);
-            if (pathLine) pathLine.addLatLng([lat, lng]);
             
             // Auto-punch logic
             checkGeofence(lat, lng);
@@ -768,13 +778,24 @@
         function calculateResults() {
             const totalTime = formatTime(state.elapsedSeconds);
             
-            // Calculate Ideal Distance (Straight line between all points)
+            // Calculate Ideal Distance (Straight line between reached points)
             let idealDist = 0;
             const track = state.selectedCourse.track;
-            for(let i=0; i<track.length-1; i++) {
+            // Only sum up to the last control reached (currentControlIndex)
+            // If they reached C2, they finished segments (Start->C1, C1->C2)
+            for(let i=0; i < state.currentControlIndex - 1; i++) {
                 idealDist += haversine(track[i].lat, track[i].lng, track[i+1].lat, track[i+1].lng);
             }
             
+            // If they haven't started or reached first control, compare to 0 or total course if finished
+            if (state.currentControlIndex === track.length) {
+                // Full course completed, use full track distance
+                idealDist = 0;
+                for(let i=0; i<track.length-1; i++) {
+                    idealDist += haversine(track[i].lat, track[i].lng, track[i+1].lat, track[i+1].lng);
+                }
+            }
+
             const detourPercent = idealDist > 0 ? Math.round(((state.totalDistance / idealDist) - 1) * 100) : 0;
 
             // Update UI
@@ -870,10 +891,24 @@
                     state.splits = data.splits;
                     state.path = data.path;
                     state.isRunning = true;
+
+                    // Restore tracking points from path
+                    if (state.path.length > 0) {
+                        const last = state.path[state.path.length - 1];
+                        state.userPos = last;
+                        state.lastCountedPos = last;
+                    }
                     
                     showView('race');
                     startGPS();
                     startTimer();
+                    
+                    // Update map line with restored path
+                    setTimeout(() => {
+                        if (pathLine && state.path.length > 0) {
+                            pathLine.setLatLngs(state.path.map(p => [p.lat, p.lng]));
+                        }
+                    }, 500);
                 } else {
                     localStorage.removeItem('orienteering_state');
                 }
