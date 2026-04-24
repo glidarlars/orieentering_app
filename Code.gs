@@ -1,4 +1,8 @@
 /**
+ * @OnlyCurrentDoc
+ */
+
+/**
  * Orienteering Web App Backend
  * Built for Google Apps Script
  */
